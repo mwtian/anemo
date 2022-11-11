@@ -8,7 +8,7 @@ use quinn::{RecvStream, SendStream};
 use std::convert::Infallible;
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 use tower::{util::BoxCloneService, ServiceExt};
-use tracing::{debug, trace};
+use tracing::{debug, info, trace};
 
 pub(crate) struct InboundRequestHandler {
     connection: Connection,
@@ -55,6 +55,7 @@ impl InboundRequestHandler {
                             let request_handler =
                                 BiStreamRequestHandler::new(self.connection.clone(), self.service.clone(), bi_tx, bi_rx);
                             inflight_requests.spawn(request_handler.handle());
+                            info!("anemo inflight requests = {}", inflight_requests.len());
                         }
                         Err(e) => {
                             trace!("error listening for incoming bi streams: {e}");
@@ -114,7 +115,7 @@ impl BiStreamRequestHandler {
 
     async fn handle(self) {
         if let Err(e) = self.do_handle().await {
-            trace!("handling request failed: {e}");
+            info!("anemo handling request failed: {e}");
         }
     }
 
@@ -144,17 +145,24 @@ impl BiStreamRequestHandler {
             let handler = self.service.oneshot(request);
             let stopped = self.send_stream.get_mut().stopped();
             tokio::select! {
-                response = handler => response.expect("Infallible"),
-                _ = stopped => return Err(anyhow::anyhow!("send_stream closed by remote")),
+                response = handler => {
+                    info!("anemo do_handle got response");
+                    response.expect("Infallible")
+                },
+                _ = stopped => {
+                    info!("anemo do_handle send stream stopped");
+                    return Err(anyhow::anyhow!("send_stream closed by remote"));
+                },
             }
         };
 
         //
         // Write Response
         //
-
+        info!("anemo writing response");
         write_response(&mut self.send_stream, response).await?;
         self.send_stream.get_mut().finish().await?;
+        info!("anemo send_stream finished");
 
         Ok(())
     }
