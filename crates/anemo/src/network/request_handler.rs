@@ -11,7 +11,8 @@ use futures::{
     StreamExt,
 };
 use quinn::{Datagrams, IncomingBiStreams, IncomingUniStreams, RecvStream, SendStream};
-use std::convert::Infallible;
+use tokio::time::timeout;
+use std::{convert::Infallible, time::Duration};
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 use tower::{util::BoxCloneService, ServiceExt};
 use tracing::{debug, trace};
@@ -71,7 +72,7 @@ impl InboundRequestHandler {
                             trace!("incoming bi stream! {}", bi_tx.id());
                             let request_handler =
                                 BiStreamRequestHandler::new(self.connection.clone(), self.service.clone(), bi_tx, bi_rx);
-                            inflight_requests.push(request_handler.handle());
+                            inflight_requests.push(timeout(Duration::from_secs(60), request_handler.handle()));
                         }
                         Err(e) => {
                             trace!("error listening for incoming bi streams: {e}");
@@ -90,7 +91,7 @@ impl InboundRequestHandler {
                         }
                     }
                 },
-                () = inflight_requests.select_next_some() => {},
+                _ = inflight_requests.select_next_some() => {},
                 complete => break,
             }
         }
