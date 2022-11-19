@@ -5,14 +5,14 @@ use super::{
 use crate::{connection::Connection, Request, Response, Result};
 use bytes::Bytes;
 use quinn::{RecvStream, SendStream};
-use std::convert::Infallible;
+use std::{convert::Infallible, time::Duration};
+use tokio::time::sleep;
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 use tower::{util::BoxCloneService, ServiceExt};
-use tracing::{debug, trace};
+use tracing::{debug, info, trace};
 
 pub(crate) struct InboundRequestHandler {
     connection: Connection,
-
     service: BoxCloneService<Request<Bytes>, Response<Bytes>, Infallible>,
     active_peers: ActivePeers,
 }
@@ -32,8 +32,9 @@ impl InboundRequestHandler {
 
     pub async fn start(self) {
         debug!(peer =% self.connection.peer_id(), "InboundRequestHandler started");
-
         let mut inflight_requests = tokio::task::JoinSet::new();
+        let ttl_timer = sleep(Duration::from_secs(60));
+        tokio::pin!(ttl_timer);
 
         loop {
             tokio::select! {
@@ -77,6 +78,11 @@ impl InboundRequestHandler {
                     // If a task panics, just propagate it
                     completed_request.unwrap();
                 },
+                () = &mut ttl_timer => {
+                    info!(peer =% self.connection.peer_id(), "Shutting down at TTL");
+                    self.connection.close();
+                    break;
+                }
             }
         }
 
