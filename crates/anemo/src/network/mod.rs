@@ -149,6 +149,7 @@ impl Builder {
                     .bind(&socket2::SockAddr::from(*addr))
                     .map_err(|e| e.into());
                 if let Ok(()) = result {
+                    println!("Anemo binded with address: {addr}");
                     return Ok(socket);
                 }
             }

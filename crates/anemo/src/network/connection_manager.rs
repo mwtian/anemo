@@ -196,6 +196,8 @@ impl ConnectionManager {
         // and freed.
         let socket = std::net::UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap();
         self.endpoint.rebind(socket).unwrap();
+
+        println!("Anemo ConnectionManager shutdown: {:?}", self.endpoint.local_addr());
     }
 
     /// This method adds an established connection with a peer to the map of active peers.
